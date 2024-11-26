@@ -93,7 +93,9 @@
   ansible.builtin.debug:
     msg: "Waiting for the job to reach a completed state (may take up to {{ sideload_kernel_job_timeout }} mins)..."
 
-- name: Wait for job completion
+- name: Wait for job successful completion
+  vars:
+    query_complete: "status.conditions[?type=='Complete'].status"
   community.kubernetes.k8s_info:
     api_version: batch/v1
     kind: Job
@@ -101,15 +103,10 @@
     namespace: "{{ sideload_kernel_namespace }}"
   environment: "{{ k8s_auth }}"
   register: job_state
-  until: not job_state.failed and "conditions" in job_state.resources[0].status and job_state.resources[0].status.conditions[0].status == "True"
+  until:
+    - not job_state.failed and "conditions" in job_state.resources[0].status
+    - "'True' in job_state.resources[0] | community.general.json_query(query_complete)"
   # A successful job may a long time, including waiting for a host reboot
   retries: "{{ sideload_kernel_job_timeout * 4 | int }}"
   delay: 15
-
-- name: Ensure the job completed successfully
-  vars:
-    query_complete: "status.conditions[?type=='Complete'].status"
-  ansible.builtin.fail:
-    msg: "Job state is {{ job_state.resources[0] | community.general.json_query(query_complete) }}"
-  when: "'True' not in job_state.resources[0] | community.general.json_query(query_complete)"
 ...
